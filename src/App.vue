@@ -67,130 +67,43 @@ async function callGeminiAPI() {
 </script>
 
 <template>
-  <main class="container">
-    <h1>我的第一個 AI 應用 (Vue + Gemini)</h1>
-    <p class="subtitle">這是一個簡單的應用，讓你體驗在 Vue 中串接 AI 服務有多麼容易。</p>
+  <div class="bg-gray-100 text-gray-800 font-sans flex justify-center pt-12 min-h-screen">
+    <main class="container bg-white max-w-3xl w-full p-8 rounded-lg shadow-md h-full">
+      <h1 class="text-3xl font-bold text-blue-600">我的第一個 AI 應用 (Vue + Gemini)</h1>
+      <p class="text-gray-600 mb-8">
+        這是一個簡單的應用，讓你體驗在 Vue 中串接 AI 服務有多麼容易。
+      </p>
 
-    <div class="form-group">
-      <textarea
-        v-model="prompt"
-        rows="4"
-        placeholder="在這裡輸入任何你想問 Gemini 的問題..."
-      ></textarea>
-      <button @click="callGeminiAPI" :disabled="loading">
-        {{ loading ? '思考中...' : '傳送問題' }}
-      </button>
-    </div>
+      <div class="form-group flex flex-col">
+        <textarea
+          v-model="prompt"
+          rows="4"
+          placeholder="在這裡輸入任何你想問 Gemini 的問題..."
+          class="w-full p-3 text-base border border-gray-300 rounded-md mb-4 resize-y focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+        ></textarea>
+        <button
+          @click="callGeminiAPI"
+          :disabled="loading"
+          class="py-3 px-5 text-base text-white bg-blue-600 rounded-md cursor-pointer transition-colors duration-300 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+        >
+          {{ loading ? '思考中...' : '傳送問題' }}
+        </button>
+      </div>
 
-    <div v-if="loading" class="loading-spinner"></div>
+      <div v-if="loading" class="flex justify-center my-8">
+        <div
+          class="w-10 h-10 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin"
+        ></div>
+      </div>
 
-    <div v-if="error" class="error-message">
-      <p><strong>糟糕！</strong> {{ error }}</p>
-    </div>
+      <div v-if="error" class="mt-4 p-4 bg-red-100 border border-red-300 text-red-700 rounded-lg">
+        <p><strong>糟糕！</strong> {{ error }}</p>
+      </div>
 
-    <div v-if="result" class="result-card">
-      <h2>Gemini 的回答：</h2>
-      <pre>{{ result }}</pre>
-    </div>
-  </main>
+      <div v-if="result" class="mt-8 p-6 bg-gray-50 border border-gray-200 rounded-lg">
+        <h2 class="mt-0 text-xl font-semibold text-gray-800 mb-4">Gemini 的回答：</h2>
+        <pre class="whitespace-pre-wrap break-words font-mono leading-relaxed">{{ result }}</pre>
+      </div>
+    </main>
+  </div>
 </template>
-
-<style>
-/* 為了讓畫面好看一點，加一些簡單的 CSS */
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #f0f2f5;
-  color: #333;
-  display: flex;
-  justify-content: center;
-  padding-top: 50px;
-}
-.container {
-  max-width: 700px;
-  width: 100%;
-  padding: 2rem;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-h1 {
-  font-size: 2rem;
-  color: #1a73e8; /* Google Blue */
-}
-.subtitle {
-  color: #5f6368;
-  margin-bottom: 2rem;
-}
-.form-group {
-  display: flex;
-  flex-direction: column;
-}
-textarea {
-  width: 100%;
-  padding: 12px;
-  font-size: 1rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  margin-bottom: 1rem;
-  resize: vertical;
-}
-button {
-  padding: 12px 20px;
-  font-size: 1rem;
-  color: white;
-  background-color: #1a73e8;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-button:hover {
-  background-color: #185abc;
-}
-button:disabled {
-  background-color: #9e9e9e;
-  cursor: not-allowed;
-}
-.result-card {
-  margin-top: 2rem;
-  padding: 1.5rem;
-  background-color: #f8f9fa;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-}
-.result-card h2 {
-  margin-top: 0;
-  color: #3c4043;
-}
-pre {
-  white-space: pre-wrap; /* 自動換行 */
-  word-wrap: break-word; /* 斷詞 */
-  font-family: 'Courier New', Courier, monospace;
-  line-height: 1.6;
-}
-.error-message {
-  margin-top: 1rem;
-  padding: 1rem;
-  background-color: #fce8e6;
-  border: 1px solid #f9a8a2;
-  color: #c5221f;
-  border-radius: 8px;
-}
-.loading-spinner {
-  margin: 2rem auto;
-  border: 5px solid #f3f3f3;
-  border-top: 5px solid #1a73e8;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-</style>

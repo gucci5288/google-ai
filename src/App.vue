@@ -15,8 +15,12 @@ interface ChatRecord {
 const prompt = ref('')
 // store Gemini result
 const result = ref('')
+// store displayed result for typewriter effect
+const displayedResult = ref('')
 // loading state
 const loading = ref(false)
+// typing state for typewriter effect
+const isTyping = ref(false)
 // store error message
 const error = ref<string | null>(null)
 // store selected model
@@ -53,16 +57,37 @@ const filteredChatHistory = computed(() => {
 
 // --- 函式定義 ---
 
+// Typewriter effect function
+function typewriterEffect(text: string, speed: number = 30) {
+  return new Promise<void>((resolve) => {
+    isTyping.value = true
+    displayedResult.value = ''
+    let index = 0
+
+    const typeInterval = setInterval(() => {
+      if (index < text.length) {
+        displayedResult.value += text.charAt(index)
+        index++
+      } else {
+        clearInterval(typeInterval)
+        isTyping.value = false
+        resolve()
+      }
+    }, speed)
+  })
+}
+
 // Function to clear current conversation and start new
 function clearCurrentConversation() {
   prompt.value = ''
   result.value = ''
+  displayedResult.value = ''
   error.value = null
   selectedChatId.value = null
 }
 
 // Function to select a chat from history
-function selectChatFromHistory(chatId: string) {
+async function selectChatFromHistory(chatId: string) {
   const chat = chatHistory.value.find((c) => c.id === chatId)
   if (chat) {
     selectedChatId.value = chatId
@@ -70,6 +95,9 @@ function selectChatFromHistory(chatId: string) {
     // Don't populate prompt to avoid confusion
     prompt.value = ''
     error.value = null
+
+    // Apply typewriter effect to show the historical response
+    await typewriterEffect(chat.response)
   }
 }
 
@@ -90,6 +118,7 @@ async function callGeminiAPI() {
   // 1. begin by resetting states
   loading.value = true
   result.value = ''
+  displayedResult.value = ''
   error.value = null
 
   // 2. check if prompt is empty
@@ -112,7 +141,11 @@ async function callGeminiAPI() {
     const responseText = response.response.text()
     result.value = responseText
 
-    // 5. Add to chat history
+    // 5. Stop loading and start typewriter effect
+    loading.value = false
+    await typewriterEffect(responseText)
+
+    // 6. Add to chat history after typewriter effect completes
     const chatRecord: ChatRecord = {
       id: Date.now().toString(),
       prompt: currentPrompt,
@@ -122,15 +155,14 @@ async function callGeminiAPI() {
     }
     chatHistory.value.unshift(chatRecord) // Add to beginning of array
 
-    // 6. Clear current prompt for next question
+    // 7. Clear current prompt for next question
     prompt.value = ''
   } catch (err) {
-    // 7. if there's an error, log it and show a friendly message
+    // 8. if there's an error, log it and show a friendly message
     console.error('API 呼叫失敗:', err) // show detailed error in console
     error.value = '發生錯誤，請檢查 API Key 或網路連線。' // show user-friendly message
-  } finally {
-    // 8. no matter success or failure, stop loading state
     loading.value = false
+    isTyping.value = false
   }
 }
 </script>
@@ -215,7 +247,8 @@ async function callGeminiAPI() {
         <select
           id="model-select"
           v-model="selectedModel"
-          class="w-full p-2 md:p-3 text-sm md:text-base border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white"
+          :disabled="loading || isTyping"
+          class="w-full p-2 md:p-3 text-sm md:text-base border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
         >
           <option v-for="model in availableModels" :key="model.value" :value="model.value">
             {{ model.label }}
@@ -228,14 +261,15 @@ async function callGeminiAPI() {
           v-model="prompt"
           rows="3"
           placeholder="在這裡輸入任何你想問 Gemini 的問題..."
-          class="w-full p-2 md:p-3 text-sm md:text-base border border-gray-300 rounded-md mb-2 md:mb-4 resize-y focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+          :disabled="loading || isTyping"
+          class="w-full p-2 md:p-3 text-sm md:text-base border border-gray-300 rounded-md mb-2 md:mb-4 resize-y focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed"
         ></textarea>
         <button
           @click="callGeminiAPI"
-          :disabled="loading"
+          :disabled="loading || isTyping"
           class="py-2 md:py-3 px-4 md:px-5 text-sm md:text-base text-white bg-blue-600 rounded-md cursor-pointer transition-colors duration-300 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
-          {{ loading ? '思考中...' : '傳送問題' }}
+          {{ loading ? '思考中...' : isTyping ? '正在顯示回答...' : '傳送問題' }}
         </button>
       </div>
 
@@ -253,15 +287,16 @@ async function callGeminiAPI() {
       </div>
 
       <div
-        v-if="result"
+        v-if="displayedResult || isTyping"
         class="mt-4 md:mt-8 p-3 md:p-6 bg-gray-50 border border-gray-200 rounded-lg"
       >
         <h2 class="mt-0 text-lg md:text-xl font-semibold text-gray-800 mb-2 md:mb-4">
           Gemini 的回答：
         </h2>
         <pre class="whitespace-pre-wrap break-words font-mono leading-relaxed text-xs md:text-sm">{{
-          result
+          displayedResult
         }}</pre>
+        <div v-if="isTyping" class="inline-block w-2 h-4 bg-blue-600 animate-pulse ml-1"></div>
       </div>
     </div>
   </div>

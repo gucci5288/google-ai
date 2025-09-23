@@ -215,7 +215,8 @@ async function callGeminiAPI() {
 
     // 5. Build conversation history for context
     const conversationHistory = []
-    for (const record of currentConversation.value.slice(0, -1)) { // Exclude the current message being processed
+    for (const record of currentConversation.value.slice(0, -1)) {
+      // Exclude the current message being processed
       conversationHistory.push({ role: 'user', parts: [{ text: record.prompt }] })
       conversationHistory.push({ role: 'model', parts: [{ text: record.response }] })
     }
@@ -248,7 +249,7 @@ async function callGeminiAPI() {
     error.value = '發生錯誤，請檢查 API Key 或網路連線。' // show user-friendly message
     loading.value = false
     isTyping.value = false
-    
+
     // Remove the incomplete user message if there was an error
     if (currentConversation.value.length > 0) {
       const lastMessage = currentConversation.value[currentConversation.value.length - 1]
@@ -370,10 +371,16 @@ async function callGeminiAPI() {
             </div>
 
             <!-- AI Response -->
-            <div v-if="message.response || (index === currentConversation.length - 1 && loading)" class="flex justify-start">
+            <div
+              v-if="message.response || (index === currentConversation.length - 1 && loading)"
+              class="flex justify-start"
+            >
               <div class="max-w-[80%] bg-gray-50 border p-3 rounded-lg rounded-bl-none">
                 <!-- Show loading indicator if this is the latest message and AI is thinking -->
-                <div v-if="index === currentConversation.length - 1 && loading" class="flex items-center space-x-2">
+                <div
+                  v-if="index === currentConversation.length - 1 && loading"
+                  class="flex items-center space-x-2"
+                >
                   <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                   <div
                     class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
@@ -397,7 +404,10 @@ async function callGeminiAPI() {
                   v-if="index === currentConversation.length - 1 && isTyping"
                   class="inline-block w-2 h-4 bg-blue-600 animate-pulse ml-1"
                 ></div>
-                <div v-if="message.response" class="text-xs text-gray-500 mt-1 flex justify-between">
+                <div
+                  v-if="message.response"
+                  class="text-xs text-gray-500 mt-1 flex justify-between"
+                >
                   <span>{{ message.model }}</span>
                   <span>{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
                 </div>

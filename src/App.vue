@@ -50,10 +50,27 @@ const genAI = new GoogleGenerativeAI(API_KEY)
 
 // Computed property for filtered chat history based on search
 const filteredChatHistory = computed(() => {
+  // Group chat records by conversationId and show only the latest message for each conversation
+  const conversationMap = new Map()
+
+  chatHistory.value.forEach((chat) => {
+    if (
+      !conversationMap.has(chat.conversationId) ||
+      conversationMap.get(chat.conversationId).timestamp < chat.timestamp
+    ) {
+      conversationMap.set(chat.conversationId, chat)
+    }
+  })
+
+  const uniqueConversations = Array.from(conversationMap.values()).sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  )
+
   if (!searchKeyword.value.trim()) {
-    return chatHistory.value
+    return uniqueConversations
   }
-  return chatHistory.value.filter(
+
+  return uniqueConversations.filter(
     (chat) =>
       chat.prompt.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
       chat.response.toLowerCase().includes(searchKeyword.value.toLowerCase()),
@@ -93,6 +110,7 @@ function clearCurrentConversation() {
   result.value = ''
   displayedResult.value = ''
   error.value = null
+  isTyping.value = false
   selectedChatId.value = null
   currentConversationId.value = null
   currentConversation.value = []
@@ -103,7 +121,6 @@ async function selectChatFromHistory(chatId: string) {
   const chat = chatHistory.value.find((c) => c.id === chatId)
   if (chat) {
     selectedChatId.value = chatId
-    result.value = chat.response
     prompt.value = ''
     error.value = null
 
@@ -113,20 +130,46 @@ async function selectChatFromHistory(chatId: string) {
       .filter((c) => c.conversationId === chat.conversationId)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 
-    // Apply typewriter effect to show the selected response
-    await typewriterEffect(chat.response)
+    // Get the latest response from the conversation and display it directly
+    const latestMessage = currentConversation.value[currentConversation.value.length - 1]
+    if (latestMessage) {
+      result.value = latestMessage.response
+      // Directly show the response without typewriter effect for history
+      displayedResult.value = latestMessage.response
+    }
   }
 }
 
 // Function to delete a chat from history
 function deleteChatFromHistory(chatId: string) {
-  const index = chatHistory.value.findIndex((c) => c.id === chatId)
-  if (index > -1) {
-    chatHistory.value.splice(index, 1)
-    if (selectedChatId.value === chatId) {
+  const chat = chatHistory.value.find((c) => c.id === chatId)
+  if (chat) {
+    // Remove all messages from the same conversation
+    chatHistory.value = chatHistory.value.filter((c) => c.conversationId !== chat.conversationId)
+
+    // If this was the selected conversation, clear it
+    if (selectedChatId.value === chatId || currentConversationId.value === chat.conversationId) {
       clearCurrentConversation()
     }
   }
+}
+
+// Helper function to get conversation title (first prompt)
+function getConversationTitle(conversationId: string): string {
+  const conversationMessages = chatHistory.value
+    .filter((c) => c.conversationId === conversationId)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+  if (conversationMessages.length > 0) {
+    const firstPrompt = conversationMessages[0].prompt
+    return firstPrompt.length > 40 ? firstPrompt.substring(0, 40) + '...' : firstPrompt
+  }
+  return '未知對話'
+}
+
+// Helper function to get conversation message count
+function getConversationMessageCount(conversationId: string): number {
+  return chatHistory.value.filter((c) => c.conversationId === conversationId).length
 }
 
 // 這是我們最核心的函式，用來呼叫 Gemini API
@@ -173,11 +216,7 @@ async function callGeminiAPI() {
     const responseText = response.response.text()
     result.value = responseText
 
-    // 7. Stop loading and start typewriter effect
-    loading.value = false
-    await typewriterEffect(responseText)
-
-    // 8. Add to current conversation and chat history
+    // 7. Add to current conversation and chat history BEFORE typewriter effect
     const chatRecord: ChatRecord = {
       id: Date.now().toString(),
       conversationId: currentConversationId.value,
@@ -188,7 +227,13 @@ async function callGeminiAPI() {
     }
 
     currentConversation.value.push(chatRecord)
-    chatHistory.value.unshift(chatRecord) // Add to beginning of array
+
+    // Add to chat history - keep all records for context, but display logic will group them
+    chatHistory.value.push(chatRecord)
+
+    // 8. Stop loading and start typewriter effect
+    loading.value = false
+    await typewriterEffect(responseText)
 
     // 9. Clear current prompt for next question
     prompt.value = ''
@@ -247,10 +292,13 @@ async function callGeminiAPI() {
             ]"
           >
             <div class="text-sm font-medium text-gray-800 mb-1 overflow-hidden">
-              {{ chat.prompt.length > 40 ? chat.prompt.substring(0, 40) + '...' : chat.prompt }}
+              {{ getConversationTitle(chat.conversationId) }}
             </div>
             <div class="text-xs text-gray-500 flex justify-between items-center">
-              <span class="truncate mr-2">{{ chat.model }}</span>
+              <span class="truncate mr-2"
+                >{{ chat.model }} •
+                {{ getConversationMessageCount(chat.conversationId) }} 則對話</span
+              >
               <div class="flex items-center gap-2 flex-shrink-0">
                 <span class="text-xs">{{ new Date(chat.timestamp).toLocaleDateString() }}</span>
                 <button
@@ -269,21 +317,23 @@ async function callGeminiAPI() {
       <!-- Main Chat Area -->
       <div class="flex-1 bg-white rounded-lg shadow-md p-6 order-1 md:order-2 flex flex-col">
         <!-- Header -->
-        <div class="mb-6">
-          <h1 class="text-3xl font-bold text-blue-600 mb-2">Gemini API</h1>
-          <p class="text-gray-600">這是一個簡單的應用，讓你體驗在 Vue 中串接 AI 服務有多麼容易。</p>
+        <div class="mb-4">
+          <h1 class="text-2xl font-bold text-blue-600 mb-1">Gemini API</h1>
+          <p class="text-gray-600 text-sm">
+            這是一個簡單的應用，讓你體驗在 Vue 中串接 AI 服務有多麼容易。
+          </p>
         </div>
 
         <!-- Model Selection -->
-        <div class="mb-6">
-          <label for="model-select" class="block text-sm font-medium text-gray-700 mb-2">
+        <div class="mb-4">
+          <label for="model-select" class="block text-xs font-medium text-gray-700 mb-1">
             選擇 AI 模型：
           </label>
           <select
             id="model-select"
             v-model="selectedModel"
             :disabled="loading || isTyping"
-            class="w-full p-3 text-base border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+            class="w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
           >
             <option v-for="model in availableModels" :key="model.value" :value="model.value">
               {{ model.label }}
@@ -292,9 +342,7 @@ async function callGeminiAPI() {
         </div>
 
         <!-- Chat Messages Area -->
-        <div
-          class="flex-1 mb-6 overflow-y-auto max-h-96 border border-gray-200 rounded-lg p-4 bg-gray-50"
-        >
+        <div class="flex-1 mb-4 overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50">
           <div v-if="currentConversation.length === 0" class="text-gray-500 text-center py-8">
             開始新的對話吧！
           </div>
@@ -353,8 +401,8 @@ async function callGeminiAPI() {
         </div>
 
         <!-- Error Display -->
-        <div v-if="error" class="mb-4 p-4 bg-red-100 border border-red-300 text-red-700 rounded-lg">
-          <p><strong>糟糕！</strong> {{ error }}</p>
+        <div v-if="error" class="mb-3 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg">
+          <p class="text-sm"><strong>糟糕！</strong> {{ error }}</p>
         </div>
 
         <!-- Input Area -->

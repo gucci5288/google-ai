@@ -197,14 +197,30 @@ async function callGeminiAPI() {
       currentConversationId.value = Date.now().toString()
     }
 
-    // 4. Build conversation history for context
+    // 4. Create user message record and add it to conversation immediately
+    const userMessageRecord: ChatRecord = {
+      id: Date.now().toString(),
+      conversationId: currentConversationId.value,
+      prompt: currentPrompt,
+      response: '', // Empty response initially
+      model: selectedModel.value,
+      timestamp: new Date(),
+    }
+
+    // Add user message to current conversation immediately
+    currentConversation.value.push(userMessageRecord)
+
+    // Clear prompt input immediately
+    prompt.value = ''
+
+    // 5. Build conversation history for context
     const conversationHistory = []
-    for (const record of currentConversation.value) {
+    for (const record of currentConversation.value.slice(0, -1)) { // Exclude the current message being processed
       conversationHistory.push({ role: 'user', parts: [{ text: record.prompt }] })
       conversationHistory.push({ role: 'model', parts: [{ text: record.response }] })
     }
 
-    // 5. use Google GenAI SDK to call Gemini API with conversation history
+    // 6. use Google GenAI SDK to call Gemini API with conversation history
     const model = genAI.getGenerativeModel({ model: selectedModel.value })
     const chat = model.startChat({
       history: conversationHistory,
@@ -212,48 +228,43 @@ async function callGeminiAPI() {
 
     const response = await chat.sendMessage(currentPrompt)
 
-    // 6. after getting response, store the result
+    // 7. after getting response, store the result
     const responseText = response.response.text()
     result.value = responseText
 
-    // 7. Add to current conversation and chat history BEFORE typewriter effect
-    const chatRecord: ChatRecord = {
-      id: Date.now().toString(),
-      conversationId: currentConversationId.value,
-      prompt: currentPrompt,
-      response: responseText,
-      model: selectedModel.value,
-      timestamp: new Date(),
-    }
-
-    currentConversation.value.push(chatRecord)
+    // 8. Update the user message record with the AI response
+    const lastMessage = currentConversation.value[currentConversation.value.length - 1]
+    lastMessage.response = responseText
 
     // Add to chat history - keep all records for context, but display logic will group them
-    chatHistory.value.push(chatRecord)
+    chatHistory.value.push(lastMessage)
 
-    // 8. Stop loading and start typewriter effect
+    // 9. Stop loading and start typewriter effect
     loading.value = false
     await typewriterEffect(responseText)
-
-    // 9. Clear current prompt for next question
-    prompt.value = ''
   } catch (err) {
     // 10. if there's an error, log it and show a friendly message
     console.error('API 呼叫失敗:', err) // show detailed error in console
     error.value = '發生錯誤，請檢查 API Key 或網路連線。' // show user-friendly message
     loading.value = false
     isTyping.value = false
+    
+    // Remove the incomplete user message if there was an error
+    if (currentConversation.value.length > 0) {
+      const lastMessage = currentConversation.value[currentConversation.value.length - 1]
+      if (lastMessage.response === '') {
+        currentConversation.value.pop()
+      }
+    }
   }
 }
 </script>
 
 <template>
-  <div class="bg-gray-100 text-gray-800 font-sans min-h-screen">
-    <div class="container mx-auto p-4 flex flex-col md:flex-row gap-4 max-w-7xl">
+  <div class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
+    <div class="flex flex-col md:flex-row h-screen">
       <!-- Left Sidebar - Chat History -->
-      <div
-        class="w-full md:w-1/3 bg-white rounded-lg shadow-md p-4 flex flex-col order-2 md:order-1"
-      >
+      <div class="w-full md:w-1/3 p-4 flex flex-col order-2 md:order-1 bg-gray-50">
         <h2 class="text-xl font-bold text-gray-800 mb-4">對話歷史</h2>
 
         <!-- Search Bar -->
@@ -287,7 +298,7 @@ async function callGeminiAPI() {
             :key="chat.id"
             @click="selectChatFromHistory(chat.id)"
             :class="[
-              'mb-2 p-3 border rounded-lg cursor-pointer transition-colors hover:bg-blue-50',
+              'mb-2 p-3 border rounded-lg cursor-pointer transition-colors hover:bg-blue-50 bg-white',
               selectedChatId === chat.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200',
             ]"
           >
@@ -314,35 +325,34 @@ async function callGeminiAPI() {
         </div>
       </div>
 
-      <!-- Main Chat Area -->
-      <div class="flex-1 bg-white rounded-lg shadow-md p-6 order-1 md:order-2 flex flex-col">
-        <!-- Header -->
-        <div class="mb-4">
-          <h1 class="text-2xl font-bold text-blue-600 mb-1">Gemini API</h1>
-          <p class="text-gray-600 text-sm">
-            這是一個簡單的應用，讓你體驗在 Vue 中串接 AI 服務有多麼容易。
-          </p>
-        </div>
+      <!-- Vertical Divider -->
+      <div class="hidden md:block w-px bg-gray-300"></div>
 
-        <!-- Model Selection -->
-        <div class="mb-4">
-          <label for="model-select" class="block text-xs font-medium text-gray-700 mb-1">
-            選擇 AI 模型：
-          </label>
-          <select
-            id="model-select"
-            v-model="selectedModel"
-            :disabled="loading || isTyping"
-            class="w-full p-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
-          >
-            <option v-for="model in availableModels" :key="model.value" :value="model.value">
-              {{ model.label }}
-            </option>
-          </select>
+      <!-- Main Chat Area -->
+      <div class="flex-1 order-1 md:order-2 flex flex-col bg-white">
+        <!-- Header -->
+        <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+          <div>
+            <h1 class="text-2xl font-bold text-blue-600 mb-1">Gemini-UI</h1>
+            <p class="text-gray-600 text-xs">Vue 中串接 AI 服務展示</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="model-select" class="text-xs font-medium text-gray-700"> AI 模型： </label>
+            <select
+              id="model-select"
+              v-model="selectedModel"
+              :disabled="loading || isTyping"
+              class="p-2 text-sm border-0 bg-transparent text-gray-700 font-medium focus:outline-none cursor-pointer disabled:cursor-not-allowed"
+            >
+              <option v-for="model in availableModels" :key="model.value" :value="model.value">
+                {{ model.label }}
+              </option>
+            </select>
+          </div>
         </div>
 
         <!-- Chat Messages Area -->
-        <div class="flex-1 mb-4 overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex-1 overflow-y-auto p-4">
           <div v-if="currentConversation.length === 0" class="text-gray-500 text-center py-8">
             開始新的對話吧！
           </div>
@@ -360,9 +370,23 @@ async function callGeminiAPI() {
             </div>
 
             <!-- AI Response -->
-            <div class="flex justify-start">
-              <div class="max-w-[80%] bg-white border p-3 rounded-lg rounded-bl-none">
-                <div class="whitespace-pre-wrap break-words text-gray-800">
+            <div v-if="message.response || (index === currentConversation.length - 1 && loading)" class="flex justify-start">
+              <div class="max-w-[80%] bg-gray-50 border p-3 rounded-lg rounded-bl-none">
+                <!-- Show loading indicator if this is the latest message and AI is thinking -->
+                <div v-if="index === currentConversation.length - 1 && loading" class="flex items-center space-x-2">
+                  <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div
+                    class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    style="animation-delay: 0.1s"
+                  ></div>
+                  <div
+                    class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    style="animation-delay: 0.2s"
+                  ></div>
+                  <span class="text-gray-500 text-sm ml-2">AI 正在思考...</span>
+                </div>
+                <!-- Show actual response or typewriter effect -->
+                <div v-else class="whitespace-pre-wrap break-words text-gray-800">
                   {{
                     index === currentConversation.length - 1 && isTyping
                       ? displayedResult
@@ -373,40 +397,25 @@ async function callGeminiAPI() {
                   v-if="index === currentConversation.length - 1 && isTyping"
                   class="inline-block w-2 h-4 bg-blue-600 animate-pulse ml-1"
                 ></div>
-                <div class="text-xs text-gray-500 mt-1 flex justify-between">
+                <div v-if="message.response" class="text-xs text-gray-500 mt-1 flex justify-between">
                   <span>{{ message.model }}</span>
                   <span>{{ new Date(message.timestamp).toLocaleTimeString() }}</span>
                 </div>
               </div>
             </div>
           </div>
-
-          <!-- Loading Indicator -->
-          <div v-if="loading" class="flex justify-start mb-4">
-            <div class="bg-white border p-3 rounded-lg rounded-bl-none">
-              <div class="flex items-center space-x-2">
-                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div
-                  class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                  style="animation-delay: 0.1s"
-                ></div>
-                <div
-                  class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                  style="animation-delay: 0.2s"
-                ></div>
-                <span class="text-gray-500 text-sm ml-2">AI 正在思考...</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- Error Display -->
-        <div v-if="error" class="mb-3 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg">
+        <div
+          v-if="error"
+          class="mx-4 mb-3 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg"
+        >
           <p class="text-sm"><strong>糟糕！</strong> {{ error }}</p>
         </div>
 
         <!-- Input Area -->
-        <div class="border-t pt-4">
+        <div class="border-gray-200 p-4 bg-gray-50">
           <div class="flex flex-col sm:flex-row gap-3">
             <textarea
               v-model="prompt"
@@ -417,7 +426,7 @@ async function callGeminiAPI() {
                   : '在這裡輸入任何你想問 Gemini 的問題...'
               "
               :disabled="loading || isTyping"
-              class="flex-1 p-3 text-base border border-gray-300 rounded-md resize-y focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed"
+              class="flex-1 p-3 text-base border border-gray-300 rounded-md resize-y focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition disabled:bg-gray-100 disabled:cursor-not-allowed bg-white"
             ></textarea>
             <button
               @click="callGeminiAPI"
